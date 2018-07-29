@@ -1,0 +1,4 @@
+# app specific
+build
+node_modules
+.env

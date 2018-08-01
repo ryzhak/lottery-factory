@@ -2,7 +2,13 @@ const { increaseTime } = require("./utils/helpers");
 
 const LotteryFactoryTestable = artifacts.require("LotteryFactoryTestable");
 
+const LOTTERY_INDEX_CREATED_AT = 0;
+const LOTTERY_INDEX_TOKEN_COUNT = 1;
 const LOTTERY_INDEX_TOKEN_COUNT_TO_SELL = 2;
+const LOTTERY_INDEX_WINNER_SUM = 3;
+const LOTTERY_INDEX_WINNER = 4;
+const LOTTERY_INDEX_PRIZE_REDEEMED = 5;
+const LOTTERY_INDEX_PARTICIPANTS = 6;
 const LOTTERY_INDEX_PARAM_GAME_DURATION = 7;
 const LOTTERY_INDEX_PARAM_INITIAL_TOKEN_PRICE = 8;
 const LOTTERY_INDEX_PARAM_DURATION_TO_TOKEN_PRICE_UP = 9;
@@ -68,7 +74,120 @@ contract("LotteryFactoryTestable", (accounts) => {
 
 	describe("buyTokens", () => {
 
-		it("should buy tokens", async () => {
+		it("should not create a new lottery if game is still in progress", async () => {
+			const lotteryCountBefore = await factory.lotteryCount();
+			assert.equal(lotteryCountBefore.toNumber(), 1);
+			
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+
+			const lotteryCountAfter = await factory.lotteryCount();
+			assert.equal(lotteryCountAfter.toNumber(), 1);
+		});
+
+		it("should create a new lottery if game finished", async () => {
+			const lotteryCountBefore = await factory.lotteryCount();
+			assert.equal(lotteryCountBefore.toNumber(), 1);
+			
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+
+			const lottery = await factory.getLotteryAtIndex(0);
+			const paramGameDuration = lottery[LOTTERY_INDEX_PARAM_GAME_DURATION].toNumber();
+			// game ends
+			increaseTime(paramGameDuration + 1);
+
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+
+			const lotteryCountAfter = await factory.lotteryCount();
+			assert.equal(lotteryCountAfter.toNumber(), 2);
+		});
+
+		it("should throw if user wants to buy 0 tokens", async () => {
+			const lottery = await factory.getLotteryAtIndex(0);
+			const paramDurationToTokenPriceUp = lottery[LOTTERY_INDEX_PARAM_DURATION_TO_TOKEN_PRICE_UP].toNumber();
+			
+			// stage 2
+			increaseTime(paramDurationToTokenPriceUp);
+
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.rejectedWith("revert");
+		});
+
+		it("should buy tokens from sellers if there are any", async () => {
+			// user1 buys 1 token and approves it to sell
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]}).should.be.fulfilled;
+
+			let lottery = await factory.getLotteryAtIndex(0);
+			const tokenCountBefore = lottery[LOTTERY_INDEX_TOKEN_COUNT].toNumber();
+			assert.equal(tokenCountBefore, 1);
+			
+			// user2 buys 1 token from user1
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[1]}).should.be.fulfilled;
+
+			lottery = await factory.getLotteryAtIndex(0);
+			const tokenCountAfter = lottery[LOTTERY_INDEX_TOKEN_COUNT].toNumber();
+			assert.equal(tokenCountAfter, 1);
+		});
+
+		it("should buy tokens from system if there are not any on sale", async () => {
+			let lottery = await factory.getLotteryAtIndex(0);
+			const tokenCountBefore = lottery[LOTTERY_INDEX_TOKEN_COUNT].toNumber();
+			assert.equal(tokenCountBefore, 0);
+
+			// user1 buys 1 token
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+
+			lottery = await factory.getLotteryAtIndex(0);
+			const tokenCountAfter = lottery[LOTTERY_INDEX_TOKEN_COUNT].toNumber();
+			assert.equal(tokenCountAfter, 1);
+		});
+
+		it("should add buyer to participants", async () => {
+			let lottery = await factory.getLotteryAtIndex(0);
+			const participantsBefore = lottery[LOTTERY_INDEX_PARTICIPANTS];
+			assert.equal(participantsBefore.length, 0);
+
+			// user1 buys 1 token
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+
+			lottery = await factory.getLotteryAtIndex(0);
+			const participantsAfter = lottery[LOTTERY_INDEX_PARTICIPANTS];
+			assert.equal(participantsAfter.length, 1);
+			assert.equal(participantsAfter[0], accounts[0]);
+		});
+
+		it("should update winner sum on tokens purchase", async () => {
+			// user1 buys 1 token
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+
+			let lottery = await factory.getLotteryAtIndex(0);
+			let winnerSum = lottery[LOTTERY_INDEX_WINNER_SUM].toNumber();
+			assert.equal(winnerSum, web3.toWei("0.01", "ether"));
+
+			// user2 buys 2 tokens
+			await factory.buyTokens({value: web3.toWei("0.02", "ether"), from: accounts[1]}).should.be.fulfilled;
+
+			lottery = await factory.getLotteryAtIndex(0);
+			winnerSum = lottery[LOTTERY_INDEX_WINNER_SUM].toNumber();
+			assert.equal(winnerSum, web3.toWei("0.03", "ether"));
+		});
+
+		it("should update winner on tokens purchase", async () => {
+			// user1 buys 1 token
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+
+			let lottery = await factory.getLotteryAtIndex(0);
+			let winner = lottery[LOTTERY_INDEX_WINNER];
+			assert.equal(winner, accounts[0]);
+
+			// user2 buys 2 tokens
+			await factory.buyTokens({value: web3.toWei("0.02", "ether"), from: accounts[1]}).should.be.fulfilled;
+
+			lottery = await factory.getLotteryAtIndex(0);
+			winner = lottery[LOTTERY_INDEX_WINNER];
+			assert.equal(winner, accounts[1]);
+		});
+
+		it("should buy tokens on this scenario: u1 buys 1, u2 buys 2, u1 approves to sell 1, u2 approves to sell 1, u3 buys 3", async () => {
 			const balanceUser1Before = await factory.balanceOf(accounts[0]);
 			assert.equal(balanceUser1Before.toNumber(), 0);
 			const balanceUser2Before = await factory.balanceOf(accounts[1]);

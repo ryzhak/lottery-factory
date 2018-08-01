@@ -128,7 +128,7 @@ contract LotteryFactory {
 		// add sender to participants
 		_addToParticipants(msg.sender);
 		// update winner values
-		lottery.winnerSum += msg.value;
+		lottery.winnerSum += tokenCountToBuyFromSystem * price;
 		lottery.winner = _getWinner();
 	}
 

@@ -171,6 +171,23 @@ contract("LotteryFactoryTestable", (accounts) => {
 			assert.equal(winnerSum, web3.toWei("0.03", "ether"));
 		});
 
+		it("should update winner sum on scenario: u1 buys 10, u2 buys 10, u1 approves to sell 5, u2 buys 10", async () => {
+			// user1 buys 10 tokens
+			await factory.buyTokens({value: web3.toWei("0.1", "ether"), from: accounts[0]}).should.be.fulfilled;
+			// user2 buys 10 tokens
+			await factory.buyTokens({value: web3.toWei("0.1", "ether"), from: accounts[1]}).should.be.fulfilled;
+			// user1 approves to sell 5
+			await factory.approveToSell(5, {from: accounts[0]}).should.be.fulfilled;
+			// user2 buys 10 tokens
+			await factory.buyTokens({value: web3.toWei("0.1", "ether"), from: accounts[1]}).should.be.fulfilled;
+
+			let lottery = await factory.getLotteryAtIndex(0);
+			const paramInitialTokenPrice = lottery[LOTTERY_INDEX_PARAM_INITIAL_TOKEN_PRICE].toNumber();
+			const winnerSum = lottery[LOTTERY_INDEX_WINNER_SUM].toNumber();
+			const expectedWinnerSum = web3.toWei("0.3", "ether") - 5 * paramInitialTokenPrice;
+			assert.equal(winnerSum, expectedWinnerSum);
+		});
+
 		it("should update winner on tokens purchase", async () => {
 			// user1 buys 1 token
 			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;

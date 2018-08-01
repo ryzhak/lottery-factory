@@ -242,6 +242,49 @@ contract("LotteryFactoryTestable", (accounts) => {
 		it("should throw if token count to buy <= 0", async () => {
 			await factory.buyTokensFromSeller(0).should.be.rejectedWith("revert");
 		});
+
+		it("should transfer ownership", async () => {
+			// user1 buys 1 token and approves it to sell
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]});
+
+			const ownerBefore = await factory.ownerOf(0);
+			assert.equal(ownerBefore, accounts[0]);
+
+			// user2 buys 1 token from user1
+			await factory.buyTokensFromSeller(1, {from: accounts[1]}).should.be.fulfilled;
+
+			const ownerAfter = await factory.ownerOf(0);
+			assert.equal(ownerAfter, accounts[1]);
+		});
+
+		it("should update contract commission sum", async () => {
+			// user1 buys 1 token and approves it to sell
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]});
+
+			const commissionBefore = await factory.commissionSum();
+
+			// user2 buys 1 token from user1
+			await factory.buyTokensFromSeller(1, {from: accounts[1]}).should.be.fulfilled;
+
+			const commissionAfter = await factory.commissionSum();
+			assert.isTrue(commissionAfter > commissionBefore);
+		});
+
+		it("should send eth to the old owner", async () => {
+			// user1 buys 10 tokens and approves them to sell
+			await factory.buyTokens({value: web3.toWei("0.1", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(10, {from: accounts[0]});
+
+			const balanceBefore = await web3.eth.getBalance(accounts[0]).toNumber();
+
+			// user2 buys 10 tokens from user1
+			await factory.buyTokensFromSeller(10, {from: accounts[1]}).should.be.fulfilled;
+
+			const balanceAfter = await web3.eth.getBalance(accounts[0]).toNumber();
+			assert.isTrue(balanceAfter > balanceBefore);
+		});
 	});
 
 	describe("disapproveToSell", () => {

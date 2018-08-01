@@ -331,7 +331,9 @@ contract LotteryFactory {
 		// get current token price and commission sum
 		uint currentTokenPrice = _getCurrentTokenPrice();
 		uint currentCommissionSum = _getValuePartByPercent(currentTokenPrice, lottery.params.tradeCommission);
-		uint purchaseSum = currentTokenPrice - currentCommissionSum;
+		uint purchasePrice = currentTokenPrice - currentCommissionSum;
+		uint purchaseSum = 0;
+		uint commissionSumTotal = 0;
 		// foreach token on sale
 		for(uint i = 0; i < lottery.tokensToSellOnce.length; i++) {
 			uint tokenId = lottery.tokensToSellOnce[i];
@@ -341,12 +343,16 @@ contract LotteryFactory {
 				address oldOwner = lottery.tokenOwner[tokenId];
 				// transfer token from old owner to new owner
 				_transferFrom(oldOwner, msg.sender, tokenId);
-				// update contract commission sum and send eth to previous owner
-				commissionSum += currentCommissionSum;
-				if(!oldOwner.send(purchaseSum)) {
-					emit PurchaseError(oldOwner, purchaseSum);
-				}
+				// update purchase sum
+				purchaseSum += purchasePrice;
+				// update commission total sum
+				commissionSumTotal += currentCommissionSum;
 			}
+		}
+		// update contract commission sum and send eth to previous owner
+		commissionSum += commissionSumTotal;
+		if(!oldOwner.send(purchaseSum)) {
+			emit PurchaseError(oldOwner, purchaseSum);
 		}
 	}
 

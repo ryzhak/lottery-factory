@@ -387,9 +387,8 @@ contract LotteryFactory {
 		uint diffInSec = now - lottery.createdAt;
 		uint stageCount = diffInSec / lottery.params.durationToTokenPriceUp;
 		uint price = lottery.params.initialTokenPrice;
-		uint addPerStage = _getValuePartByPercent(price, lottery.params.tokenPriceIncreasePercent);
 		for(uint i = 0; i < stageCount; i++) {
-			price += addPerStage;
+			price += _getValuePartByPercent(price, lottery.params.tokenPriceIncreasePercent);
 		}
 		return price;
 	}

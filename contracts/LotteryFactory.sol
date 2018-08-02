@@ -377,11 +377,12 @@ contract LotteryFactory {
 		uint purchasePrice = currentTokenPrice - currentCommissionSum;
 		uint purchaseSum = 0;
 		uint commissionSumTotal = 0;
+		uint tokensBought = 0;
 		// foreach token on sale
 		for(uint i = 0; i < lottery.tokensToSellOnce.length; i++) {
 			uint tokenId = lottery.tokensToSellOnce[i];
-			// if token is on sale
-			if(lottery.tokenSell[tokenId]) {
+			// if token is on sale and this is not buyer's token
+			if(lottery.tokenSell[tokenId] && lottery.tokenOwner[tokenId] != msg.sender) {
 				// save the old owner
 				address oldOwner = lottery.tokenOwner[tokenId];
 				// transfer token from old owner to new owner
@@ -390,7 +391,11 @@ contract LotteryFactory {
 				purchaseSum += purchasePrice;
 				// update commission total sum
 				commissionSumTotal += currentCommissionSum;
+				// add 1 to bought tokens count
+				tokensBought++;
 			}
+			// if bought enough tokens then break
+			if(tokensBought == _tokenCountToBuy) break;
 		}
 		// update contract commission sum and send eth to previous owner
 		commissionSum += commissionSumTotal;
@@ -470,12 +475,16 @@ contract LotteryFactory {
 		// check that token count is not 0
 		require(_tokenCountToBuy > 0);
 		// get latest lottery
-		Lottery memory lottery = lotteries[lotteryCount - 1];
+		Lottery storage lottery = lotteries[lotteryCount - 1];
+		// check that total token count on sale is more that user has
+		require(lottery.tokenCountToSell >= lottery.ownerTokenCountToSell[msg.sender]);
+		// substitute user's token on sale count from total count
+		uint tokenCountToSell = lottery.tokenCountToSell - lottery.ownerTokenCountToSell[msg.sender];
 		// if there are no tokens to sell then return 0
-		if(lottery.tokenCountToSell == 0) return 0;
+		if(tokenCountToSell == 0) return 0;
 		// if there are less tokens to sell than we need
-		if(lottery.tokenCountToSell < _tokenCountToBuy) {
-			return lottery.tokenCountToSell;
+		if(tokenCountToSell < _tokenCountToBuy) {
+			return tokenCountToSell;
 		} else {
 			// contract has all tokens to buy from sellers
 			return _tokenCountToBuy;

@@ -333,6 +333,46 @@ contract("LotteryFactoryTestable", (accounts) => {
 		});
 	});
 
+	describe("getTop", () => {
+
+		it("should throw on attempt to find top 0 users", async () => {
+			await factory.getTop(0).should.be.rejectedWith("revert");
+		});
+
+		it("should return empty addresses and balances if there are no purchases", async () => {
+			const top = await factory.getTop(2);
+			const addresses = top[0];
+			const balances = top[1];
+
+			assert.equal(addresses.length, 2);
+			assert.equal(addresses[0], "0x0000000000000000000000000000000000000000");
+			assert.equal(addresses[1], "0x0000000000000000000000000000000000000000");
+			assert.equal(balances.length, 2);
+			assert.equal(balances[0].toNumber(), 0);
+			assert.equal(balances[1].toNumber(), 0);
+		});
+
+		it("should find top 2 users out of 3", async () => {
+			// user1 buys 10 tokens
+			await factory.buyTokens({value: web3.toWei("0.1", "ether"), from: accounts[0]}).should.be.fulfilled;
+			// user2 buys 20 tokens
+			await factory.buyTokens({value: web3.toWei("0.2", "ether"), from: accounts[1]}).should.be.fulfilled;
+			// user3 buys 30 tokens
+			await factory.buyTokens({value: web3.toWei("0.3", "ether"), from: accounts[2]}).should.be.fulfilled;
+
+			const top = await factory.getTop(2);
+			const addresses = top[0];
+			const balances = top[1];
+
+			assert.equal(addresses.length, 2);
+			assert.equal(addresses[0], accounts[2]);
+			assert.equal(addresses[1], accounts[1]);
+			assert.equal(balances.length, 2);
+			assert.equal(balances[0].toNumber(), 30);
+			assert.equal(balances[1].toNumber(), 20);
+		});
+	});
+
 	describe("isTokenSelling", () => {
 
 		it("return false if token is not on sale", async () => {

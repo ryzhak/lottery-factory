@@ -196,6 +196,49 @@ contract LotteryFactory {
 	}
 
 	/**
+	 * @dev Returns top users by balances for current lottery
+	 * @param _n number of top users to find
+	 * @return array of addresses and array of balances sorted in balance descend
+	 */
+	function getTop(uint _n) public view returns(address[], uint[]) {
+		// check that n > 0
+		require(_n > 0);
+		// get latest lottery
+		Lottery memory lottery = lotteries[lotteryCount - 1];
+		// find top n users with highest token balances
+		address[] memory resultAddresses = new address[](_n);
+		uint[] memory resultBalances = new uint[](_n);
+		for(uint i = 0; i < _n; i++) {
+			// if current iteration is more than number of participants then continue
+			if(i > lottery.participants.length - 1) continue;
+			// if 1st iteration then set 0 values
+			uint prevMaxBalance = i == 0 ? 0 : resultBalances[i-1];
+			address prevAddressWithMax = i == 0 ? address(0) : resultAddresses[i-1];
+			uint currentMaxBalance = 0;
+			address currentAddressWithMax = address(0);
+			for(uint j = 0; j < lottery.participants.length; j++) {
+				uint balance = balanceOf(lottery.participants[j]);
+				// if first iteration then simply find max
+				if(i == 0) {
+					if(balance > currentMaxBalance) {
+						currentMaxBalance = balance;
+						currentAddressWithMax = lottery.participants[j];
+					}
+				} else {
+					// find balance that is less or equal to the prev max
+					if(prevMaxBalance >= balance && balance > currentMaxBalance && lottery.participants[j] != prevAddressWithMax) {
+						currentMaxBalance = balance;
+						currentAddressWithMax = lottery.participants[j];
+					}
+				}
+			}
+			resultAddresses[i] = currentAddressWithMax;
+			resultBalances[i] = currentMaxBalance;
+		}
+		return(resultAddresses, resultBalances);
+	}
+
+	/**
 	 * @dev Checks whether token is selling at the moment
 	 * @param _tokenId token index
 	 * @return whether token is on sale

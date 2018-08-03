@@ -602,6 +602,26 @@ contract("LotteryFactoryTestable", (accounts) => {
 
 	describe("withdraw", () => {
 
+		it("should throw if commission sum <= 0", async () => {
+			await factory.withdraw().should.be.rejectedWith("revert");
+		});
+
+		it("should reset commission sum after withdraw", async () => {
+			// user1 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]}).should.be.fulfilled;
+			// user2 buys 1 token and increases contract's commision sum
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[1]}).should.be.fulfilled;
+
+			const commissionSumBefore = await factory.commissionSum();
+			assert.isTrue(commissionSumBefore.toNumber() != 0);
+
+			await factory.withdraw().should.be.fulfilled;
+
+			const commissionSumAfter = await factory.commissionSum();
+			assert.equal(commissionSumAfter.toNumber(), 0);
+		});
+
 		it("should withdraw commission sum to the owner", async () => {
 			// user1 buys 10 tokens and approves them for sale
 			await factory.buyTokens({value: web3.toWei("0.1", "ether"), from: accounts[0]}).should.be.fulfilled;
@@ -616,6 +636,17 @@ contract("LotteryFactoryTestable", (accounts) => {
 			const balanceAfter = web3.eth.getBalance(accounts[0]).toNumber();
 			
 			assert.isTrue(balanceAfter > balanceBefore);
+		});
+
+		it("should not allow to withdraw commission 2 times", async () => {
+			// user1 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]}).should.be.fulfilled;
+			// user2 buys 1 token and increases contract's commision sum
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[1]}).should.be.fulfilled;
+
+			await factory.withdraw().should.be.fulfilled;
+			await factory.withdraw().should.be.rejectedWith("revert");
 		});
 	});
 

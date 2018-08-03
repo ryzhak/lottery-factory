@@ -309,7 +309,13 @@ contract LotteryFactory {
 	 * @dev Withdraws commission sum to the owner
 	 */
 	function withdraw() public onlyOwner {
-		owner.transfer(commissionSum);
+		// check that commision > 0
+		require(commissionSum > 0);
+		// save commission for later transfer and reset
+		uint commissionSumToTransfer = commissionSum;
+		commissionSum = 0;
+		// transfer commission to owner
+		owner.transfer(commissionSumToTransfer);
 	}
 
 	/**

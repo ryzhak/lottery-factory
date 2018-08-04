@@ -116,6 +116,9 @@ contract LotteryFactory {
 		// get token count to buy
 		uint price = _getCurrentTokenPrice();
 		uint tokenCountToBuy = msg.value / price;
+		uint rest = msg.value - tokenCountToBuy * price;
+		commissionSum = commissionSum + rest;
+
 		// check that user wants to buy at least 1 token
 		require(tokenCountToBuy > 0);
 		// buy tokens from sellers

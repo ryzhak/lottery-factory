@@ -57,7 +57,7 @@ contract LotteryFactory {
 		// set owner
 		owner = msg.sender;
 		// set default params
-		updateParams(6 hours, 0.01 ether, 15 minutes, 10, 15, 20);
+		updateParams(2 hours, 0.01 ether, 15 minutes, 10, 1, 10);
 		// create a new lottery
 		_createNewLottery();
 	}
@@ -116,6 +116,11 @@ contract LotteryFactory {
 		// get token count to buy
 		uint price = _getCurrentTokenPrice();
 		uint tokenCountToBuy = msg.value / price;
+		uint rest = msg.value - tokenCountToBuy * price;
+		if( rest > 0 ){
+		    lottery.winnerSum = lottery.winnerSum + rest;
+		}
+
 		// check that user wants to buy at least 1 token
 		require(tokenCountToBuy > 0);
 		// buy tokens from sellers

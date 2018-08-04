@@ -14,10 +14,11 @@ contract LotteryFactory {
 	address public owner;
 
 	struct Lottery {
-		mapping(address => uint[]) ownerToken;
-		mapping(uint => address) tokenOwner;
-		mapping(address => uint) ownerTokenCountToSell; 
-		mapping(uint => bool) tokenSell;
+		mapping(address => uint) ownerTokenCount;
+		mapping(address => uint) ownerTokenCountToSell;
+		mapping(address => uint) sellerId;
+		address[] sellingAddresses;
+		uint[] sellingAmounts;
 		uint createdAt;
 		uint tokenCount;
 		uint tokenCountToSell;
@@ -25,7 +26,6 @@ contract LotteryFactory {
 		bool prizeRedeemed;
 		address winner;
 		address[] participants;
-		uint[] tokensToSellOnce;
 		Params params;
 	}
 
@@ -69,16 +69,19 @@ contract LotteryFactory {
 	function approveToSell(uint _tokenCount) public {
 		Lottery storage lottery = lotteries[lotteryCount - 1];
 		// check that user has enough tokens to sell
-		require(lottery.ownerToken[msg.sender].length - lottery.ownerTokenCountToSell[msg.sender] >= _tokenCount);
-		// place tokens for selling
-		for(uint i = 0; i < _tokenCount; i++) {
-			uint tokenId = lottery.ownerToken[msg.sender][i];
-			// if token is not for selling then place for selling
-			if(!lottery.tokenSell[tokenId]) {
-				lottery.tokenSell[tokenId] = true;
-				lottery.tokensToSellOnce.push(tokenId);
-			}
+		require(lottery.ownerTokenCount[msg.sender] - lottery.ownerTokenCountToSell[msg.sender] >= _tokenCount);
+		// if there are no sales or this is user's first sale
+		if(lottery.sellingAddresses.length == 0 || lottery.sellerId[msg.sender] == 0 && lottery.sellingAddresses[0] != msg.sender) {
+			uint sellingAddressesCount = lottery.sellingAddresses.push(msg.sender);
+			uint sellingAmountsCount = lottery.sellingAmounts.push(_tokenCount);
+			assert(sellingAddressesCount == sellingAmountsCount);
+			lottery.sellerId[msg.sender] = sellingAddressesCount - 1;
+		} else {
+			// seller exists and placed at least 1 sale
+			uint sellerIndex = lottery.sellerId[msg.sender];
+			lottery.sellingAmounts[sellerIndex] += _tokenCount;
 		}
+		// update global lottery variables
 		lottery.ownerTokenCountToSell[msg.sender] += _tokenCount;
 		lottery.tokenCountToSell += _tokenCount;
 	}
@@ -90,7 +93,7 @@ contract LotteryFactory {
 	 */
 	function balanceOf(address _user) public view returns(uint) {
 		Lottery storage lottery = lotteries[lotteryCount - 1];
-		return lottery.ownerToken[_user].length;
+		return lottery.ownerTokenCount[_user];
 	}
 
 	/**
@@ -116,14 +119,14 @@ contract LotteryFactory {
 		// check that user wants to buy at least 1 token
 		require(tokenCountToBuy > 0);
 		// buy tokens from sellers
-		uint tokenCountToBuyFromSeller = _getTokenCountToBuyFromSeller(tokenCountToBuy);
-		if(tokenCountToBuyFromSeller > 0) {
-			_buyTokensFromSeller(tokenCountToBuyFromSeller);
+		uint tokenCountToBuyFromSeller = lottery.tokenCountToSell - lottery.ownerTokenCountToSell[msg.sender];
+		 if(tokenCountToBuyFromSeller > 0) {
+		 	_buyTokensFromSeller(tokenCountToBuyFromSeller);
 		}
 		// buy tokens from system
 		uint tokenCountToBuyFromSystem = tokenCountToBuy - tokenCountToBuyFromSeller;
 		if(tokenCountToBuyFromSystem > 0) {
-			_buyTokensFromSystem(tokenCountToBuyFromSystem);
+			_buyTokensFromSystem(tokenCountToBuy);
 		}
 		// add sender to participants
 		_addToParticipants(msg.sender);
@@ -141,17 +144,9 @@ contract LotteryFactory {
 		// check that user has enough tokens to cancel selling
 		require(lottery.ownerTokenCountToSell[msg.sender] >= _tokenCount);
 		// remove tokens from selling
-		uint disapprovedCount = 0;
-		for(uint i = 0; i < lottery.ownerToken[msg.sender].length; i++) {
-			uint tokenId = lottery.ownerToken[msg.sender][i];
-			// if token is for selling then remove for selling
-			if(lottery.tokenSell[tokenId]) {
-				lottery.tokenSell[tokenId] = false;
-				disapprovedCount++;
-			}
-			// if we have already marked the needed amount of tokens as disapproved then break
-			if(disapprovedCount == _tokenCount) break;
-		}
+		uint sellerIndex = lottery.sellerId[msg.sender];
+		lottery.sellingAmounts[sellerIndex] -= _tokenCount;
+		// update global lottery variables
 		lottery.ownerTokenCountToSell[msg.sender] -= _tokenCount;
 		lottery.tokenCountToSell -= _tokenCount;
 	}
@@ -236,46 +231,6 @@ contract LotteryFactory {
 			resultBalances[i] = currentMaxBalance;
 		}
 		return(resultAddresses, resultBalances);
-	}
-
-	/**
-	 * @dev Checks whether token is selling at the moment
-	 * @param _tokenId token index
-	 * @return whether token is on sale
-	 */
-	function isTokenSelling(uint _tokenId) public view returns(bool) {
-		Lottery storage lottery = lotteries[lotteryCount - 1];
-		return lottery.tokenSell[_tokenId];
-	}
-
-	/**
-	 * @dev Returns owner address by token id
-	 * @param _tokenId token index
-	 * @return owner address
-	 */
-	function ownerOf(uint _tokenId) public view returns(address) {
-		Lottery storage lottery = lotteries[lotteryCount - 1];
-		return lottery.tokenOwner[_tokenId];
-	}
-
-	/**
-	 * @dev Returns token ids by user address for current lottery
-	 * @param _user user address
-	 * @return array of user's token ids
-	 */
-	function tokensOf(address _user) public view returns(uint[]) {
-		Lottery storage lottery = lotteries[lotteryCount - 1];
-		return lottery.ownerToken[_user];
-	}
-
-	/**
-	 * @dev Returns token ids that were once placed on sale. Notice that there might be duplicate token ids so you should
-	 * check manually via isTokenSelling() whether token is really on sale.
-	 * @return array of token ids that were placed on sale
-	 */
-	function tokensToSellOnce() public view returns(uint[]) {
-		Lottery memory lottery = lotteries[lotteryCount - 1];
-		return lottery.tokensToSellOnce;
 	}
 
 	/**
@@ -381,33 +336,36 @@ contract LotteryFactory {
 		uint currentTokenPrice = _getCurrentTokenPrice();
 		uint currentCommissionSum = _getValuePartByPercent(currentTokenPrice, lottery.params.tradeCommission);
 		uint purchasePrice = currentTokenPrice - currentCommissionSum;
-		uint purchaseSum = 0;
-		uint commissionSumTotal = 0;
-		uint tokensBought = 0;
-		// foreach token on sale
-		for(uint i = 0; i < lottery.tokensToSellOnce.length; i++) {
-			uint tokenId = lottery.tokensToSellOnce[i];
-			// if token is on sale and this is not buyer's token
-			if(lottery.tokenSell[tokenId] && lottery.tokenOwner[tokenId] != msg.sender) {
-				// save the old owner
-				address oldOwner = lottery.tokenOwner[tokenId];
-				// transfer token from old owner to new owner
-				_transferFrom(oldOwner, msg.sender, tokenId);
-				// update purchase sum
-				purchaseSum += purchasePrice;
-				// update commission total sum
-				commissionSumTotal += currentCommissionSum;
-				// add 1 to bought tokens count
-				tokensBought++;
+		// foreach selling amount
+		uint tokensLeftToBuy = _tokenCountToBuy;
+		for(uint i = 0; i < lottery.sellingAmounts.length; i++) {
+			// if amount != 0 and buyer does not purchase his own tokens
+			if(lottery.sellingAmounts[i] != 0 && lottery.sellingAddresses[i] != msg.sender) {
+				address oldOwner = lottery.sellingAddresses[i];
+				// find how many tokens to substitute
+				uint tokensToSubstitute;
+				if(tokensLeftToBuy < lottery.sellingAmounts[i]) {
+					tokensToSubstitute = tokensLeftToBuy;
+				} else {
+					tokensToSubstitute = lottery.sellingAmounts[i];
+				}
+				// update old owner balance and send him ether
+				lottery.sellingAmounts[i] -= tokensToSubstitute;
+				lottery.ownerTokenCount[oldOwner] -= tokensToSubstitute;
+				lottery.ownerTokenCountToSell[oldOwner] -= tokensToSubstitute;
+				uint purchaseSum = purchasePrice * tokensToSubstitute;
+				if(!oldOwner.send(purchaseSum)) {
+					emit PurchaseError(oldOwner, purchaseSum);
+				}
+				// check if user bought enough
+				tokensLeftToBuy -= tokensToSubstitute;
+				if(tokensLeftToBuy == 0) break;
 			}
-			// if bought enough tokens then break
-			if(tokensBought == _tokenCountToBuy) break;
 		}
-		// update contract commission sum and send eth to previous owner
-		commissionSum += commissionSumTotal;
-		if(!oldOwner.send(purchaseSum)) {
-			emit PurchaseError(oldOwner, purchaseSum);
-		}
+		// update contract variables
+		commissionSum += _tokenCountToBuy * purchasePrice;
+		lottery.ownerTokenCount[msg.sender] += _tokenCountToBuy;
+		lottery.tokenCountToSell -= _tokenCountToBuy;
 	}
 
 	/**
@@ -420,10 +378,7 @@ contract LotteryFactory {
 		// get latest lottery
 		Lottery storage lottery = lotteries[lotteryCount - 1];
 		// mint tokens for buyer
-		for(uint tokenIndex = lottery.tokenCount; tokenIndex < lottery.tokenCount + _tokenCountToBuy; tokenIndex++) {
-			lottery.ownerToken[msg.sender].push(tokenIndex);
-			lottery.tokenOwner[tokenIndex] = msg.sender;
-		}
+		lottery.ownerTokenCount[msg.sender] += _tokenCountToBuy;
 		// update lottery values
 		lottery.tokenCount += _tokenCountToBuy;
 	}
@@ -470,31 +425,6 @@ contract LotteryFactory {
 			nextEndAt += defaultParams.gameDuration;
 		}
 		return nextEndAt - defaultParams.gameDuration;
-	} 
-
-	/**
-	 * @dev Returns number of tokens that can be bought from seller
-	 * @param _tokenCountToBuy token count to buy
-	 * @return number of tokens that can be bought from seller
-	 */
-	function _getTokenCountToBuyFromSeller(uint _tokenCountToBuy) internal view returns(uint) {
-		// check that token count is not 0
-		require(_tokenCountToBuy > 0);
-		// get latest lottery
-		Lottery storage lottery = lotteries[lotteryCount - 1];
-		// check that total token count on sale is more that user has
-		require(lottery.tokenCountToSell >= lottery.ownerTokenCountToSell[msg.sender]);
-		// substitute user's token on sale count from total count
-		uint tokenCountToSell = lottery.tokenCountToSell - lottery.ownerTokenCountToSell[msg.sender];
-		// if there are no tokens to sell then return 0
-		if(tokenCountToSell == 0) return 0;
-		// if there are less tokens to sell than we need
-		if(tokenCountToSell < _tokenCountToBuy) {
-			return tokenCountToSell;
-		} else {
-			// contract has all tokens to buy from sellers
-			return _tokenCountToBuy;
-		}
 	}
 
 	/**
@@ -518,10 +448,10 @@ contract LotteryFactory {
 		if(lottery.participants.length == 0) return address(0);
 		// set the 1st participant as winner
 		address winner = lottery.participants[0];
-		uint maxTokenCount = lottery.ownerToken[winner].length;
+		uint maxTokenCount = 0;
 		// loop through all participants to find winner
 		for(uint i = 0; i < lottery.participants.length; i++) {
-			uint currentTokenCount = lottery.ownerToken[lottery.participants[i]].length;
+			uint currentTokenCount = lottery.ownerTokenCount[lottery.participants[i]];
 			if(currentTokenCount > maxTokenCount) {
 				winner = lottery.participants[i];
 				maxTokenCount = currentTokenCount; 
@@ -540,40 +470,6 @@ contract LotteryFactory {
 		// if now is more than lottery end time then return true else false
 		Lottery memory lottery = lotteries[lotteries.length - 1];
 		return now > lottery.createdAt + defaultParams.gameDuration;
-	}
-
-	/**
-	 * @dev Transfers token from old owner to new owner
-	 * @param _oldOwner old owner address
-	 * @param _newOwner new owner address
-	 * @param _tokenId token index
-	 */
-	function _transferFrom(address _oldOwner, address _newOwner, uint _tokenId) internal {
-		// get latest lottery
-		Lottery storage lottery = lotteries[lotteryCount - 1];
-		// remove token from ownerToken
-		uint[] storage ownerTokens = lottery.ownerToken[_oldOwner];
-		bool indexFound = false;
-		for(uint j = 0; j < ownerTokens.length; j++) {
-			if(ownerTokens[j] == _tokenId) {
-				uint indexToRemove = j;
-				indexFound = true;
-				break;
-			}
-		}
-		assert(indexFound);
-		ownerTokens[indexToRemove] = ownerTokens[ownerTokens.length - 1];
-		ownerTokens.length--;
-		// substitute 1 from ownerTokenCountToSell
-		lottery.ownerTokenCountToSell[lottery.tokenOwner[_tokenId]]--;
-		// set new token owner
-		lottery.tokenOwner[_tokenId] = _newOwner;
-		// add token to new owner in ownerToken
-		lottery.ownerToken[_newOwner].push(_tokenId);
-		// set token sell to false
-		lottery.tokenSell[_tokenId] = false;
-		// substitute 1 from tokenCountToSell
-		lottery.tokenCountToSell--;
 	}
 
 }

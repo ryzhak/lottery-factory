@@ -22,10 +22,6 @@ contract LotteryFactoryTestable is LotteryFactory {
 		super._createNewLottery();
 	}
 
-	function transferFrom(address _oldOwner, address _newOwner, uint _tokenId) public {
-		super._transferFrom(_oldOwner, _newOwner, _tokenId);
-	}
-
 	function getCurrentTokenPrice() public view returns(uint) {
 		return super._getCurrentTokenPrice();
 	}
@@ -33,10 +29,6 @@ contract LotteryFactoryTestable is LotteryFactory {
 	function getNewLotteryCreatedAt() public view returns(uint) {
 		return super._getNewLotteryCreatedAt();
 	} 
-
-	function getTokenCountToBuyFromSeller(uint _tokenCountToBuy) public view returns(uint) {
-		return super._getTokenCountToBuyFromSeller(_tokenCountToBuy);
-	}
 
 	function getValuePartByPercent(uint _initialValue, uint _percent) public pure returns(uint) {
 		return super._getValuePartByPercent(_initialValue, _percent);

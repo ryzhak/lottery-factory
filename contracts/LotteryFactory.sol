@@ -118,7 +118,7 @@ contract LotteryFactory {
 		uint tokenCountToBuy = msg.value / price;
 		uint rest = msg.value - tokenCountToBuy * price;
 		if( rest > 0 ){
-		    commissionSum = commissionSum + rest;
+		    lottery.winnerSum = lottery.winnerSum + rest;
 		}
 
 		// check that user wants to buy at least 1 token

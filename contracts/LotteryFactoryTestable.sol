@@ -30,6 +30,10 @@ contract LotteryFactoryTestable is LotteryFactory {
 		return super._getNewLotteryCreatedAt();
 	} 
 
+	function getTokenCountToBuyFromSeller(uint _tokenCountToBuy) public view returns(uint) {
+		return super._getTokenCountToBuyFromSeller(_tokenCountToBuy);
+	} 
+
 	function getValuePartByPercent(uint _initialValue, uint _percent) public pure returns(uint) {
 		return super._getValuePartByPercent(_initialValue, _percent);
 	}

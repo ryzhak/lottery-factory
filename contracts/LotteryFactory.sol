@@ -116,22 +116,22 @@ contract LotteryFactory {
 		// get token count to buy
 		uint price = _getCurrentTokenPrice();
 		uint tokenCountToBuy = msg.value / price;
+		// any extra eth added to winner sum
 		uint rest = msg.value - tokenCountToBuy * price;
 		if( rest > 0 ){
 		    lottery.winnerSum = lottery.winnerSum + rest;
 		}
-
 		// check that user wants to buy at least 1 token
 		require(tokenCountToBuy > 0);
 		// buy tokens from sellers
-		uint tokenCountToBuyFromSeller = lottery.tokenCountToSell - lottery.ownerTokenCountToSell[msg.sender];
-		 if(tokenCountToBuyFromSeller > 0) {
+		uint tokenCountToBuyFromSeller = _getTokenCountToBuyFromSeller(tokenCountToBuy);
+		if(tokenCountToBuyFromSeller > 0) {
 		 	_buyTokensFromSeller(tokenCountToBuyFromSeller);
 		}
 		// buy tokens from system
 		uint tokenCountToBuyFromSystem = tokenCountToBuy - tokenCountToBuyFromSeller;
 		if(tokenCountToBuyFromSystem > 0) {
-			_buyTokensFromSystem(tokenCountToBuy);
+			_buyTokensFromSystem(tokenCountToBuyFromSystem);
 		}
 		// add sender to participants
 		_addToParticipants(msg.sender);
@@ -196,6 +196,17 @@ contract LotteryFactory {
 	}
 
 	/**
+	 * @dev Returns arrays of addresses who sell tokens and corresponding amounts
+	 * @return array of addresses who sell tokens and array of amounts
+	 */
+	function getSales() public view returns(address[], uint[]) {
+		// get latest lottery
+		Lottery memory lottery = lotteries[lotteryCount - 1];
+		// return array of addresses who sell tokens and amounts
+		return (lottery.sellingAddresses, lottery.sellingAmounts);
+	}
+
+	/**
 	 * @dev Returns top users by balances for current lottery
 	 * @param _n number of top users to find
 	 * @return array of addresses and array of balances sorted in balance descend
@@ -236,6 +247,16 @@ contract LotteryFactory {
 			resultBalances[i] = currentMaxBalance;
 		}
 		return(resultAddresses, resultBalances);
+	}
+
+	/**
+	 * @dev Returns seller id by user address
+	 * @param _user user address
+	 * @return seller id/index
+	 */
+	function sellerIdOf(address _user) public view returns(uint) {
+		Lottery storage lottery = lotteries[lotteryCount - 1];
+		return lottery.sellerId[_user];
 	}
 
 	/**
@@ -430,6 +451,31 @@ contract LotteryFactory {
 			nextEndAt += defaultParams.gameDuration;
 		}
 		return nextEndAt - defaultParams.gameDuration;
+	}
+
+	/**
+	 * @dev Returns number of tokens that can be bought from seller
+	 * @param _tokenCountToBuy token count to buy
+	 * @return number of tokens that can be bought from seller
+	 */
+	function _getTokenCountToBuyFromSeller(uint _tokenCountToBuy) internal view returns(uint) {
+		// check that token count is not 0
+		require(_tokenCountToBuy > 0);
+		// get latest lottery
+		Lottery storage lottery = lotteries[lotteryCount - 1];
+		// check that total token count on sale is more that user has
+		require(lottery.tokenCountToSell >= lottery.ownerTokenCountToSell[msg.sender]);
+		// substitute user's token on sale count from total count
+		uint tokenCountToSell = lottery.tokenCountToSell - lottery.ownerTokenCountToSell[msg.sender];
+		// if there are no tokens to sell then return 0
+		if(tokenCountToSell == 0) return 0;
+		// if there are less tokens to sell than we need
+		if(tokenCountToSell < _tokenCountToBuy) {
+			return tokenCountToSell;
+		} else {
+			// contract has all tokens to buy from sellers
+			return _tokenCountToBuy;
+		}
 	}
 
 	/**

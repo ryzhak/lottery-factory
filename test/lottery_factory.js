@@ -16,6 +16,9 @@ const LOTTERY_INDEX_PARAM_TOKEN_PRICE_INCREASE_PERCENT = 10;
 const LOTTERY_INDEX_PARAM_TRADE_COMMISSION = 11;
 const LOTTERY_INDEX_PARAM_WINNER_COMMISSION = 12;
 
+const SALE_INDEX_ADDRESS = 0;
+const SALE_INDEX_AMOUNT = 1;
+
 contract("LotteryFactoryTestable", (accounts) => {
 
 	let factory;
@@ -31,16 +34,142 @@ contract("LotteryFactoryTestable", (accounts) => {
 			await factory.approveToSell(2).should.be.rejectedWith("revert");
 		});
 
-		it("should increase user's token amount to sell", async () => {
+		it("should add seller address on first sale", async () => {
+			let sales = await factory.getSales();
+			const addressesBefore = sales[SALE_INDEX_ADDRESS];
+			assert.equal(addressesBefore.length, 0);
+
 			await factory.buyTokens({value: web3.toWei("0.01", "ether")}).should.be.fulfilled;
-
-			const balanceBeforeApprove = await factory.balanceSellingOf(accounts[0])
-			assert.equal(balanceBeforeApprove.toNumber(), 0);
-
 			await factory.approveToSell(1).should.be.fulfilled;
 
-			const balanceAfterApprove = await factory.balanceSellingOf(accounts[0])
-			assert.equal(balanceAfterApprove.toNumber(), 1);
+			sales = await factory.getSales();
+			const addressesAfter = sales[SALE_INDEX_ADDRESS];
+			assert.equal(addressesAfter.length, 1);
+		});
+
+		it("should add amount on first sale", async () => {
+			let sales = await factory.getSales();
+			const amountsBefore = sales[SALE_INDEX_AMOUNT];
+			assert.equal(amountsBefore.length, 0);
+
+			await factory.buyTokens({value: web3.toWei("0.01", "ether")}).should.be.fulfilled;
+			await factory.approveToSell(1).should.be.fulfilled;
+
+			sales = await factory.getSales();
+			const amountsAfter = sales[SALE_INDEX_AMOUNT];
+			assert.equal(amountsAfter[0].toNumber(), 1);
+		});
+
+		it("should set seller id on first sale", async () => {
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]}).should.be.fulfilled;
+
+			const sellerId = await factory.sellerIdOf(accounts[0]);
+			assert.equal(sellerId.toNumber(), 0);
+		});
+
+		it("should add seller address on first user's sale", async () => {
+			// user1 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]}).should.be.fulfilled;
+
+			let sales = await factory.getSales();
+			const addressesBefore = sales[SALE_INDEX_ADDRESS];
+			assert.equal(addressesBefore.length, 1);
+
+			/// user2 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[1]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[1]}).should.be.fulfilled;
+
+			sales = await factory.getSales();
+			const addressesAfter = sales[SALE_INDEX_ADDRESS];
+			assert.equal(addressesAfter.length, 2);
+			assert.equal(addressesAfter[1], accounts[1]);
+		});
+
+		it("should add amount on first user's sale", async () => {
+			// user1 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]}).should.be.fulfilled;
+
+			let sales = await factory.getSales();
+			const amountsBefore = sales[SALE_INDEX_AMOUNT];
+			assert.equal(amountsBefore.length, 1);
+
+			// user2 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[1]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[1]}).should.be.fulfilled;
+
+			sales = await factory.getSales();
+			const amountsAfter = sales[SALE_INDEX_AMOUNT];
+			assert.equal(amountsAfter.length, 2);
+		});
+
+		it("should set seller id on first user's sale", async () => {
+			// user1 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]}).should.be.fulfilled;
+			// user2 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[1]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[1]}).should.be.fulfilled;
+
+			const sellerId = await factory.sellerIdOf(accounts[1]);
+			assert.equal(sellerId.toNumber(), 1);
+		});
+
+		it("should approve tokens on scenario: u1 buys 1, u1 approves 1, u1 buys 1, u1 approves 1", async () => {
+			// user1 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]}).should.be.fulfilled;
+			// user1 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]}).should.be.fulfilled;
+
+			let sales = await factory.getSales();
+			const addresses = sales[SALE_INDEX_ADDRESS];
+			const amounts = sales[SALE_INDEX_AMOUNT];
+			assert.equal(addresses.length, 1);
+			assert.equal(addresses[0], accounts[0]);
+			assert.equal(amounts.length, 1);
+			assert.equal(amounts[0].toNumber(), 2);
+		});
+
+		it("should add tokens amount to an existing sale", async () => {
+			// user1 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]}).should.be.fulfilled;
+			// user2 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[1]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[1]}).should.be.fulfilled;
+			// user2 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[1]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[1]}).should.be.fulfilled;
+
+			let sales = await factory.getSales();
+			const addresses = sales[SALE_INDEX_ADDRESS];
+			const amounts = sales[SALE_INDEX_AMOUNT];
+			assert.equal(addresses.length, 2);
+			assert.equal(addresses[1], accounts[1]);
+			assert.equal(amounts.length, 2);
+			assert.equal(amounts[1].toNumber(), 2);
+		});
+
+		it("should update owner token count to sell", async () => {
+			// user1 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]}).should.be.fulfilled;
+
+			const balanceSelling = await factory.balanceSellingOf(accounts[0]);
+			assert.equal(balanceSelling.toNumber(), 1);
+		});
+
+		it("should update lottery token count to sell", async () => {
+			// user1 buys 1 token and approves it for sale
+			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(1, {from: accounts[0]}).should.be.fulfilled;
+
+			const lottery = await factory.getLotteryAtIndex(0);
+			assert.equal(lottery[LOTTERY_INDEX_TOKEN_COUNT_TO_SELL].toNumber(), 1);
 		});
 	});
 
@@ -99,6 +228,14 @@ contract("LotteryFactoryTestable", (accounts) => {
 
 			const lotteryCountAfter = await factory.lotteryCount();
 			assert.equal(lotteryCountAfter.toNumber(), 2);
+		});
+
+		it("should add extra eth to winner sum", async () => {
+			const value = web3.toWei("0.011", "ether");
+			await factory.buyTokens({value: value, from: accounts[0]}).should.be.fulfilled;
+
+			const lottery = await factory.getLotteryAtIndex(0);
+			assert.equal(lottery[LOTTERY_INDEX_WINNER_SUM].toNumber(), value);
 		});
 
 		it("should throw if user wants to buy 0 tokens", async () => {
@@ -249,96 +386,6 @@ contract("LotteryFactoryTestable", (accounts) => {
 		});
 	});
 
-	describe("buyTokensFromSeller", () => {
-
-		it("should throw if token count to buy <= 0", async () => {
-			await factory.buyTokensFromSeller(0).should.be.rejectedWith("revert");
-		});
-
-		it("should not buy tokens that are owned by buyer", async () => {
-			// user1 buys 2 tokens
-			await factory.buyTokens({value: web3.toWei("0.02", "ether"), from: accounts[0]}).should.be.fulfilled;
-			// user2 buys 2 tokens
-			await factory.buyTokens({value: web3.toWei("0.02", "ether"), from: accounts[1]}).should.be.fulfilled;
-
-			// user1 approves to sell 2 tokens
-			await factory.approveToSell(2, {from: accounts[0]}).should.be.fulfilled;
-			// user2 approves to sell 2 tokens
-			await factory.approveToSell(2, {from: accounts[1]}).should.be.fulfilled;
-
-			assert.equal(await factory.ownerOf(0), accounts[0]);
-			assert.equal(await factory.ownerOf(1), accounts[0]);
-			assert.equal(await factory.ownerOf(2), accounts[1]);
-			assert.equal(await factory.ownerOf(3), accounts[1]);
-
-			// user1 buys 2 tokens
-			await factory.buyTokens({value: web3.toWei("0.02", "ether"), from: accounts[0]}).should.be.fulfilled;
-
-			assert.equal(await factory.ownerOf(0), accounts[0]);
-			assert.equal(await factory.ownerOf(1), accounts[0]);
-			assert.equal(await factory.ownerOf(2), accounts[0]);
-			assert.equal(await factory.ownerOf(3), accounts[0]);
-		});
-
-		it("should transfer ownership", async () => {
-			// user1 buys 1 token and approves it to sell
-			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
-			await factory.approveToSell(1, {from: accounts[0]});
-
-			const ownerBefore = await factory.ownerOf(0);
-			assert.equal(ownerBefore, accounts[0]);
-
-			// user2 buys 1 token from user1
-			await factory.buyTokensFromSeller(1, {from: accounts[1]}).should.be.fulfilled;
-
-			const ownerAfter = await factory.ownerOf(0);
-			assert.equal(ownerAfter, accounts[1]);
-		});
-
-		it("should not buy more tokens than needed", async () => {
-			// user1 buys 10 tokens and approves them to sell
-			await factory.buyTokens({value: web3.toWei("0.1", "ether"), from: accounts[0]}).should.be.fulfilled;
-			await factory.approveToSell(10, {from: accounts[0]});
-
-			const balanceBefore = await factory.balanceOf(accounts[1]);
-			assert.equal(balanceBefore.toNumber(), 0);
-
-			// user2 buys 5 tokens from user1
-			await factory.buyTokensFromSeller(5, {from: accounts[1]}).should.be.fulfilled;
-
-			const balanceAfter = await factory.balanceOf(accounts[1]);
-			assert.equal(balanceAfter.toNumber(), 5);
-		});
-
-		it("should update contract commission sum", async () => {
-			// user1 buys 1 token and approves it to sell
-			await factory.buyTokens({value: web3.toWei("0.01", "ether"), from: accounts[0]}).should.be.fulfilled;
-			await factory.approveToSell(1, {from: accounts[0]});
-
-			const commissionBefore = await factory.commissionSum();
-
-			// user2 buys 1 token from user1
-			await factory.buyTokensFromSeller(1, {from: accounts[1]}).should.be.fulfilled;
-
-			const commissionAfter = await factory.commissionSum();
-			assert.isTrue(commissionAfter > commissionBefore);
-		});
-
-		it("should send eth to the old owner", async () => {
-			// user1 buys 10 tokens and approves them to sell
-			await factory.buyTokens({value: web3.toWei("0.1", "ether"), from: accounts[0]}).should.be.fulfilled;
-			await factory.approveToSell(10, {from: accounts[0]});
-
-			const balanceBefore = await web3.eth.getBalance(accounts[0]).toNumber();
-
-			// user2 buys 10 tokens from user1
-			await factory.buyTokensFromSeller(10, {from: accounts[1]}).should.be.fulfilled;
-
-			const balanceAfter = await web3.eth.getBalance(accounts[0]).toNumber();
-			assert.isTrue(balanceAfter > balanceBefore);
-		});
-	});
-
 	describe("disapproveToSell", () => {
 
 		it("should throw if user has not enough tokens to disapprove selling", async () => {
@@ -347,7 +394,22 @@ contract("LotteryFactoryTestable", (accounts) => {
 			await factory.approveToSell(2).should.be.rejectedWith("revert");
 		});
 
-		it("should decrease user's token amount to sell", async () => {
+		it("should decrease user's selling amount", async () => {
+			await factory.buyTokens({value: web3.toWei("0.01", "ether")}).should.be.fulfilled;
+			await factory.approveToSell(1).should.be.fulfilled;
+
+			let sales = await factory.getSales();
+			const sellingAmountsBefore = sales[SALE_INDEX_AMOUNT];
+			assert.equal(sellingAmountsBefore[0].toNumber(), 1);
+
+			await factory.disapproveToSell(1).should.be.fulfilled;
+
+			sales = await factory.getSales();
+			const sellingAmountsAfter = sales[SALE_INDEX_AMOUNT];
+			assert.equal(sellingAmountsAfter[0].toNumber(), 0);
+		});
+
+		it("should decrease user's token count to sell", async () => {
 			await factory.buyTokens({value: web3.toWei("0.01", "ether")}).should.be.fulfilled;
 			await factory.approveToSell(1).should.be.fulfilled;
 
@@ -358,6 +420,19 @@ contract("LotteryFactoryTestable", (accounts) => {
 
 			const balanceAfterDisapprove = await factory.balanceSellingOf(accounts[0])
 			assert.equal(balanceAfterDisapprove.toNumber(), 0);
+		});
+
+		it("should decrease lottery token count to sell", async () => {
+			await factory.buyTokens({value: web3.toWei("0.01", "ether")}).should.be.fulfilled;
+			await factory.approveToSell(1).should.be.fulfilled;
+
+			let lottery = await factory.getLotteryAtIndex(0);
+			assert.equal(lottery[LOTTERY_INDEX_TOKEN_COUNT_TO_SELL].toNumber(), 1);
+
+			await factory.disapproveToSell(1).should.be.fulfilled;
+
+			lottery = await factory.getLotteryAtIndex(0);
+			assert.equal(lottery[LOTTERY_INDEX_TOKEN_COUNT_TO_SELL].toNumber(), 0);
 		});
 	});
 
@@ -382,6 +457,45 @@ contract("LotteryFactoryTestable", (accounts) => {
 			increaseTime(paramDurationToTokenPriceUp);
 			const priceStage3 = await factory.getCurrentTokenPrice();
 			assert.equal(priceStage3.toNumber(), +priceStage2 + (paramTokenPriceIncreasePercent / 100) * priceStage2);
+		});
+	});
+
+	describe("getTokenCountToBuyFromSeller", () => {
+
+		it("should throw if token count to buy <= 0", async () => {
+			await factory.getTokenCountToBuyFromSeller(0).should.be.rejectedWith("revert");
+		});
+
+		it("should return 0 if there are no tokens on sale", async () => {
+			const count = await factory.getTokenCountToBuyFromSeller(1);
+			assert.equal(count.toNumber(), 0);
+		});
+
+		it("should return 0 if there are only buyer's tokens on sale", async () => {
+			// user1 buys 10 tokens and approves them to sell
+			await factory.buyTokens({value: web3.toWei("0.1", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(10, {from: accounts[0]}).should.be.fulfilled;
+
+			const count = await factory.getTokenCountToBuyFromSeller(1);
+			assert.equal(count.toNumber(), 0);
+		});
+
+		it("should return token count on sale if there are less tokens than user needs", async () => {
+			// user1 buys 10 tokens and approves 5 to sell
+			await factory.buyTokens({value: web3.toWei("0.1", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(5, {from: accounts[0]}).should.be.fulfilled;
+			// user2 checks how many tokens he can buy from sellers
+			const count = await factory.getTokenCountToBuyFromSeller(10, {from: accounts[1]});
+			assert.equal(count.toNumber(), 5);
+		});
+
+		it("should return token count on sale if there are more tokens than user needs", async () => {
+			// user1 buys 10 tokens and approves 10 to sell
+			await factory.buyTokens({value: web3.toWei("0.1", "ether"), from: accounts[0]}).should.be.fulfilled;
+			await factory.approveToSell(10, {from: accounts[0]}).should.be.fulfilled;
+			// user2 checks how many tokens he can buy from sellers
+			const count = await factory.getTokenCountToBuyFromSeller(10, {from: accounts[1]});
+			assert.equal(count.toNumber(), 10);
 		});
 	});
 
